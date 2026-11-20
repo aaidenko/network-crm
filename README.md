@@ -97,7 +97,3 @@ curl -s -X POST http://127.0.0.1:56321/functions/v1/crm-mcp/localtest \
 ```
 
 Local ports are moved to 563xx in `supabase/config.toml` so they don't collide with other local Supabase projects.
-
-## License
-
-MIT
