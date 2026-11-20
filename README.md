@@ -11,8 +11,8 @@ No LLM API calls: Claude does the language understanding inside your existing Cl
 ## Architecture
 
 ```
-Claude app (phone / desktop / web)
-        │  custom connector (remote MCP, Streamable HTTP)
+Claude app (phone / desktop / web)  or  Claude Code
+        │  remote MCP, Streamable HTTP
         ▼
 Supabase Edge Function  supabase/functions/crm-mcp
         │  service role
@@ -36,7 +36,7 @@ GitHub Pages dashboard (docs/) ── GET /data ──► same edge function
 |---|---|
 | `who_to_reach_out` | People past their cadence, plus follow-ups that are due |
 | `find_people` | Fuzzy search by name, company, role, how you met, tag |
-| `get_person` | Full profile, interaction history, open follow-ups |
+| `get_person` | Full profile, who they know, interaction history, open follow-ups |
 | `add_person` | Add someone (refuses duplicates unless asked) |
 | `update_person` | Edit fields, add/remove tags, append dated notes, change cadence |
 | `log_interaction` | Record a conversation and optionally a follow-up |
@@ -70,7 +70,7 @@ supabase functions deploy crm-mcp --no-verify-jwt
 echo "https://<project-ref>.supabase.co/functions/v1/crm-mcp/$SECRET"
 ```
 
-**Connect Claude:** on claude.ai, go to *Settings → Connectors → Add custom connector* and paste the URL. It then works in the Claude mobile and desktop apps too.
+Then connect Claude (next section).
 
 **Monthly email (optional):** create a free [Resend](https://resend.com) account and an API key. Without a verified domain, Resend only delivers to your own account email.
 
@@ -89,7 +89,23 @@ select vault.create_secret(
 
 The digest runs on the 1st of each month at 15:00 UTC. To change that, add a migration that reschedules `monthly-network-digest` (see `supabase/migrations/*_monthly_digest.sql`).
 
-**Dashboard:** enable GitHub Pages for the `docs/` folder, open the page, and paste the connector URL.
+**Dashboard:** enable GitHub Pages for the `docs/` folder.
+
+## Connecting Claude
+
+Every client below talks to the same server and database, so it doesn't matter where you log something. Each needs the connector URL from setup.
+
+**Claude apps (web, desktop chat, iOS/Android):** on claude.ai, go to *Settings → Connectors → Add custom connector* and paste the URL. It carries over to the mobile app signed in to the same account, and you switch it on per chat from the tools menu. On Team and Enterprise plans, usually only org owners can add custom connectors. If that's you, use a personal account for this.
+
+**Claude Code (terminal, or the Code tab in the desktop app):** Claude Code keeps its own server list, separate from org-managed connectors:
+
+```bash
+claude mcp add --transport http --scope user network-crm "https://<project-ref>.supabase.co/functions/v1/crm-mcp/<MCP_SECRET>"
+```
+
+`--scope user` makes it available in every project. New sessions pick it up.
+
+**Dashboard on a phone:** open `https://aaidenko.github.io/network-crm/#connect=<url-encoded connector URL>` once, then use *Share → Add to Home Screen*. The page remembers the URL and refreshes when you come back to it.
 
 ## Local development
 
