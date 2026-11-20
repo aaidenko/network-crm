@@ -3,8 +3,9 @@
 //
 //   POST /crm-mcp/<MCP_SECRET>         MCP endpoint (add this URL as a Claude connector)
 //   POST /crm-mcp/<MCP_SECRET>/digest  send the reminder email (pg_cron calls this monthly)
+//   GET  /crm-mcp/<MCP_SECRET>/data    everything, read-only, for the dashboard in docs/
 
-import { today, ToolError } from "./db.ts";
+import { check, db, today, ToolError } from "./db.ts";
 import { sendDigest } from "./digest.ts";
 import { callTool, TOOLS } from "./tools.ts";
 
@@ -19,8 +20,26 @@ conversations they've had, and follow-ups they owe.
 - Never create duplicates: use find_people before add_person. If a name is ambiguous, ask.
 - Capture durable facts (new job, kids' names, interests) with update_person, not just in the
   interaction summary.
+- When the user mentions that two people know each other (classmates, coworkers, one introduced
+  them), record it with link_people and a short note.
 - When asked who to reach out to, use who_to_reach_out and suggest a concrete reason to reconnect
   drawn from past interactions.`;
+
+async function dashboardData() {
+  const [people, interactions, followUps, relationships] = await Promise.all([
+    db.from("people_status").select("*").eq("archived", false).order("name"),
+    db.from("interactions").select("id, person_id, occurred_on, channel, summary").order("occurred_on", { ascending: false }),
+    db.from("follow_ups").select("id, person_id, description, due_on").is("done_at", null).order("due_on"),
+    db.from("relationships").select("person_a, person_b, note"),
+  ]);
+  return {
+    today: today(),
+    people: check(people),
+    interactions: check(interactions),
+    follow_ups: check(followUps),
+    relationships: check(relationships),
+  };
+}
 
 type RpcMessage = { jsonrpc: "2.0"; id?: string | number | null; method?: string; params?: Record<string, unknown> };
 
@@ -90,6 +109,17 @@ Deno.serve(async (req) => {
     } catch (e) {
       console.error("digest", e);
       return json({ sent: false, error: (e as Error).message }, 500);
+    }
+  }
+  if (rest[1] === "data" && req.method === "GET") {
+    try {
+      const res = json(await dashboardData());
+      res.headers.set("Access-Control-Allow-Origin", "*");
+      res.headers.set("Cache-Control", "no-store");
+      return res;
+    } catch (e) {
+      console.error("data", e);
+      return json({ error: (e as Error).message }, 500);
     }
   }
   if (rest.length > 1) return new Response("Not found", { status: 404 });

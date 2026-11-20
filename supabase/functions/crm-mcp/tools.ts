@@ -60,6 +60,14 @@ async function resolvePerson(ref: unknown, includeArchived = false): Promise<Per
   if (exact.length === 1) return exact[0];
   if (exact.length > 1) throw ambiguous(r, exact);
 
+  // Partial name match ("Tom" -> "Tom Alvarez") before searching other fields,
+  // so "Tom" doesn't also hit someone whose how_met mentions Tom.
+  let partialQ = db.from("people_status").select("*").ilike("name", `%${escaped}%`);
+  if (!includeArchived) partialQ = partialQ.eq("archived", false);
+  const partial = check(await partialQ.limit(6)) as PersonRow[];
+  if (partial.length === 1) return partial[0];
+  if (partial.length > 1) throw ambiguous(r, partial);
+
   const fuzzy = check(await db.rpc("search_people", { q: r, lim: 5 })) as PersonRow[];
   if (fuzzy.length === 1) return fuzzy[0];
   if (fuzzy.length === 0) {
@@ -79,6 +87,21 @@ function pickPersonFields(args: Args) {
   if (Array.isArray(out.tags)) out.tags = normTags(out.tags as string[]);
   return out;
 }
+
+/** People this person is connected to, with the note on each connection. */
+async function knownBy(id: string) {
+  const rows = check(
+    await db.from("relationships")
+      .select("note, a:people!relationships_person_a_fkey(id, name), b:people!relationships_person_b_fkey(id, name)")
+      .or(`person_a.eq.${id},person_b.eq.${id}`),
+  ) as unknown as Array<{ note: string | null; a: { id: string; name: string }; b: { id: string; name: string } }>;
+  return rows.map((r) => {
+    const other = r.a.id === id ? r.b : r.a;
+    return compact({ id: other.id, name: other.name, note: r.note });
+  });
+}
+
+const orderedPair = (x: string, y: string) => (x < y ? [x, y] : [y, x]);
 
 const normTags = (tags: string[]) => [...new Set(tags.map((t) => t.trim().toLowerCase()).filter(Boolean))];
 
@@ -131,16 +154,19 @@ export const TOOLS: Tool[] = [
   },
   {
     name: "get_person",
-    description: "Full profile for one person: contact info, how you met, notes, interaction history, open follow-ups.",
+    description:
+      "Full profile for one person: contact info, how you met, notes, who they know, " +
+      "interaction history, open follow-ups.",
     inputSchema: { type: "object", properties: { person: personRef }, required: ["person"] },
     annotations: { readOnlyHint: true },
     run: async (a) => {
       const p = await resolvePerson(a.person);
-      const [interactions, followUps] = await Promise.all([
+      const [interactions, followUps, knows] = await Promise.all([
         db.from("interactions").select("id, occurred_on, channel, summary")
           .eq("person_id", p.id).order("occurred_on", { ascending: false }).limit(50),
         db.from("follow_ups").select("id, description, due_on")
           .eq("person_id", p.id).is("done_at", null).order("due_on"),
+        knownBy(p.id),
       ]);
       return {
         ...brief(p),
@@ -155,6 +181,7 @@ export const TOOLS: Tool[] = [
           cadence_days: p.cadence_days,
           notes: p.notes,
         }),
+        knows,
         interactions: check(interactions),
         open_follow_ups: check(followUps),
       };
@@ -307,6 +334,50 @@ export const TOOLS: Tool[] = [
       const rows = check(await db.from("interactions").delete().eq("id", a.id).select("id")) as unknown[];
       if (!rows.length) throw new ToolError(`No interaction with id ${a.id}.`);
       return { status: "deleted" };
+    },
+  },
+  {
+    name: "link_people",
+    description:
+      "Record that two people in your network know each other, with an optional note on how " +
+      "(e.g. 'Stanford classmates', 'Tom introduced them'). Calling again updates the note.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        person: personRef,
+        other: str("The other person's name or id"),
+        note: str("How they know each other"),
+      },
+      required: ["person", "other"],
+    },
+    run: async (a) => {
+      const [p, o] = await Promise.all([resolvePerson(a.person), resolvePerson(a.other)]);
+      if (p.id === o.id) throw new ToolError("Those are the same person.");
+      const [person_a, person_b] = orderedPair(p.id, o.id);
+      check(
+        await db.from("relationships")
+          .upsert({ person_a, person_b, note: a.note ?? null }, { onConflict: "person_a,person_b" }),
+      );
+      return { status: "linked", people: [p.name, o.name], note: a.note ?? null };
+    },
+  },
+  {
+    name: "unlink_people",
+    description: "Remove a who-knows-who connection between two people.",
+    inputSchema: {
+      type: "object",
+      properties: { person: personRef, other: str("The other person's name or id") },
+      required: ["person", "other"],
+    },
+    annotations: { destructiveHint: true },
+    run: async (a) => {
+      const [p, o] = await Promise.all([resolvePerson(a.person), resolvePerson(a.other)]);
+      const [person_a, person_b] = orderedPair(p.id, o.id);
+      const rows = check(
+        await db.from("relationships").delete().eq("person_a", person_a).eq("person_b", person_b).select("id"),
+      ) as unknown[];
+      if (!rows.length) throw new ToolError(`${p.name} and ${o.name} aren't linked.`);
+      return { status: "unlinked", people: [p.name, o.name] };
     },
   },
   {

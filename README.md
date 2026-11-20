@@ -4,7 +4,7 @@ A personal CRM for keeping up with your professional network, with **no app and 
 
 > "Had coffee with Priya from Stripe yesterday. She's moving to their AI infra team. Remind me to send her the eval paper this week."
 
-Claude finds Priya (or adds her), logs the conversation, resets her reach-out clock, and creates the follow-up. On the 1st of each month you get a short email listing who you've lost touch with.
+Claude finds Priya (or adds her), logs the conversation, resets her reach-out clock, and creates the follow-up. On the 1st of each month you get a short email listing who you've lost touch with, and a small read-only [dashboard](https://aaidenko.github.io/network-crm/) lets you browse everyone, filter by tag, and see who knows whom as a graph.
 
 No LLM API calls: Claude does the language understanding inside your existing Claude plan. The server is a thin, deterministic layer over Postgres.
 
@@ -20,11 +20,14 @@ Supabase Edge Function  supabase/functions/crm-mcp
 Postgres                supabase/migrations
         ▲
 pg_cron ── monthly POST /digest ──► Resend email
+
+GitHub Pages dashboard (docs/) ── GET /data ──► same edge function
 ```
 
 - **Stateless MCP over HTTP** with JSON responses, implemented directly (no SDK) in about 100 lines: [`index.ts`](supabase/functions/crm-mcp/index.ts)
 - **Tools**: [`tools.ts`](supabase/functions/crm-mcp/tools.ts)
-- **Schema**: `people`, `interactions`, `follow_ups`, plus a `people_status` view that computes `last_contact` and `next_due` from each person's cadence
+- **Dashboard**: static HTML/JS in [`docs/`](docs/), no build step. List view with search, tag filters, and grouping; person pages; a d3-force graph clustered by tag or company.
+- **Schema**: `people`, `interactions`, `follow_ups`, `relationships` (who knows whom), plus a `people_status` view that computes `last_contact` and `next_due` from each person's cadence
 - **Fuzzy name resolution** with `pg_trgm`: "priya" or "Priyaa Sha" finds Priya Shah. Ambiguous names return candidates so Claude asks you which one you meant.
 
 ## Tools
@@ -38,6 +41,7 @@ pg_cron ── monthly POST /digest ──► Resend email
 | `update_person` | Edit fields, add/remove tags, append dated notes, change cadence |
 | `log_interaction` | Record a conversation and optionally a follow-up |
 | `list_follow_ups` / `complete_follow_up` | Things you owe people |
+| `link_people` / `unlink_people` | Record that two people know each other, and how |
 | `delete_interaction` | Undo a mistaken log |
 | `archive_person` | Hide someone from reminders and search (reversible) |
 
@@ -47,6 +51,7 @@ pg_cron ── monthly POST /digest ──► Resend email
 
 - **RLS is on, with no policies.** The public anon key can't read anything. Only the edge function (service role) touches the data.
 - **The MCP endpoint lives at a secret path:** `/functions/v1/crm-mcp/<MCP_SECRET>`. Claude custom connectors can't send a Supabase JWT, so the secret URL acts as the credential. Treat that URL like a password. Requests with a wrong or missing secret get a 404.
+- **The dashboard holds no secrets.** On first visit you paste the connector URL (or open `https://aaidenko.github.io/network-crm/#connect=<url-encoded connector URL>`). It's stored in that browser's localStorage and used to call the read-only `/data` route.
 - **The cron job reads the digest URL from Supabase Vault,** so no secret appears in this repo.
 
 ## Setup
@@ -83,6 +88,8 @@ select vault.create_secret(
 ```
 
 The digest runs on the 1st of each month at 15:00 UTC. To change that, add a migration that reschedules `monthly-network-digest` (see `supabase/migrations/*_monthly_digest.sql`).
+
+**Dashboard:** enable GitHub Pages for the `docs/` folder, open the page, and paste the connector URL.
 
 ## Local development
 
