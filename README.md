@@ -4,7 +4,7 @@ A personal CRM for keeping up with your professional network, with **no app and 
 
 > "Had coffee with Priya from Stripe yesterday. She's moving to their AI infra team. Remind me to send her the eval paper this week."
 
-Claude finds Priya (or adds her), logs the conversation, resets her reach-out clock, and creates the follow-up. Every Monday you get a short email listing who you've lost touch with.
+Claude finds Priya (or adds her), logs the conversation, resets her reach-out clock, and creates the follow-up. On the 1st of each month you get a short email listing who you've lost touch with.
 
 No LLM API calls: Claude does the language understanding inside your existing Claude plan. The server is a thin, deterministic layer over Postgres.
 
@@ -19,7 +19,7 @@ Supabase Edge Function  supabase/functions/crm-mcp
         ▼
 Postgres                supabase/migrations
         ▲
-pg_cron ── weekly POST /digest ──► Resend email
+pg_cron ── monthly POST /digest ──► Resend email
 ```
 
 - **Stateless MCP over HTTP** with JSON responses, implemented directly (no SDK) in about 100 lines: [`index.ts`](supabase/functions/crm-mcp/index.ts)
@@ -67,7 +67,7 @@ echo "https://<project-ref>.supabase.co/functions/v1/crm-mcp/$SECRET"
 
 **Connect Claude:** on claude.ai, go to *Settings → Connectors → Add custom connector* and paste the URL. It then works in the Claude mobile and desktop apps too.
 
-**Weekly email (optional):** create a free [Resend](https://resend.com) account and an API key. Without a verified domain, Resend only delivers to your own account email.
+**Monthly email (optional):** create a free [Resend](https://resend.com) account and an API key. Without a verified domain, Resend only delivers to your own account email.
 
 ```bash
 supabase secrets set RESEND_API_KEY=re_... DIGEST_EMAIL=you@example.com
@@ -82,7 +82,7 @@ select vault.create_secret(
 );
 ```
 
-The digest runs Mondays at 15:00 UTC. To change that, edit `supabase/migrations/*_weekly_digest.sql` or use `cron.alter_job`.
+The digest runs on the 1st of each month at 15:00 UTC. To change that, add a migration that reschedules `monthly-network-digest` (see `supabase/migrations/*_monthly_digest.sql`).
 
 ## Local development
 

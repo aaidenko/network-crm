@@ -2,13 +2,13 @@ import { reachOutList } from "./db.ts";
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
 
-/** Email a short "who to reach out to" list. Called weekly by pg_cron. */
+/** Email a short "who to reach out to" list. Called monthly by pg_cron. */
 export async function sendDigest(): Promise<Record<string, unknown>> {
   const apiKey = Deno.env.get("RESEND_API_KEY");
   const to = Deno.env.get("DIGEST_EMAIL");
   if (!apiKey || !to) return { sent: false, reason: "RESEND_API_KEY or DIGEST_EMAIL not set" };
 
-  const { overdue, follow_ups_due } = await reachOutList({ limit: 8 });
+  const { overdue, follow_ups_due } = await reachOutList({ limit: 12 });
   if (!overdue.length && !follow_ups_due.length) return { sent: false, reason: "nothing due" };
 
   const people = overdue.map((p) => {
@@ -21,7 +21,7 @@ export async function sendDigest(): Promise<Record<string, unknown>> {
     .join("");
 
   const html = [
-    `<p>A few people worth reaching out to this week:</p>`,
+    `<p>A few people worth reaching out to this month:</p>`,
     people && `<ul>${people}</ul>`,
     followUps && `<p>Follow-ups due:</p><ul>${followUps}</ul>`,
     `<p style="color:#888">Log a catch-up by telling Claude, e.g. "had coffee with Priya today, talked about…"</p>`,

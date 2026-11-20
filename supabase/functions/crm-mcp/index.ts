@@ -2,7 +2,7 @@
 // running as a Supabase Edge Function.
 //
 //   POST /crm-mcp/<MCP_SECRET>         MCP endpoint (add this URL as a Claude connector)
-//   POST /crm-mcp/<MCP_SECRET>/digest  send the weekly reminder email (pg_cron calls this)
+//   POST /crm-mcp/<MCP_SECRET>/digest  send the reminder email (pg_cron calls this monthly)
 
 import { today, ToolError } from "./db.ts";
 import { sendDigest } from "./digest.ts";
