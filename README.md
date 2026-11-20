@@ -1,6 +1,6 @@
 # Network CRM
 
-A personal CRM for keeping up with your professional network, with **no app and no UI to build**. You talk to it through Claude (phone, desktop, or web) via a remote [MCP](https://modelcontextprotocol.io) server.
+A personal CRM for keeping up with your professional network. You add and update it by talking to Claude (phone, desktop, or Claude Code) through a remote [MCP](https://modelcontextprotocol.io) server, and browse it in a small read-only dashboard.
 
 > "Had coffee with Priya from Stripe yesterday. She's moving to their AI infra team. Remind me to send her the eval paper this week."
 
