@@ -91,6 +91,8 @@ The digest runs on the 1st of each month at 15:00 UTC. To change that, add a mig
 
 **Dashboard:** enable GitHub Pages for the `docs/` folder.
 
+**Keep-alive:** Supabase pauses free projects after about a week idle. [`keepalive.yml`](.github/workflows/keepalive.yml) pings the server every 3 days. Give it the connector URL as a repo secret: `gh secret set CRM_URL`.
+
 ## Connecting Claude
 
 Every client below talks to the same server and database, so it doesn't matter where you log something. Each needs the connector URL from setup.
