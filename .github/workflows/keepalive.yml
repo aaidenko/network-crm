@@ -1,0 +1,34 @@
+# Supabase pauses free projects after about a week without activity, which
+# would silently stop the MCP server, the dashboard, and the monthly email.
+# This pings the database every 3 days. If the ping fails, the run fails and
+# GitHub emails you.
+
+name: Keep Supabase awake
+
+on:
+  schedule:
+    - cron: "17 14 */3 * *"
+  workflow_dispatch:
+
+permissions:
+  actions: write # to re-enable this workflow, see the last step
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping the CRM
+        env:
+          CRM_URL: ${{ secrets.CRM_URL }}
+        run: |
+          if [ -z "$CRM_URL" ]; then echo "CRM_URL secret is not set"; exit 1; fi
+          code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 60 "$CRM_URL/data")
+          echo "HTTP $code"
+          [ "$code" = "200" ]
+
+      # GitHub disables scheduled workflows after 60 days without repo activity.
+      # Re-enabling it through the API resets that clock without needing commits.
+      - name: Keep this schedule enabled
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/keepalive.yml/enable"
